@@ -59,20 +59,62 @@ export default function Dashboard() {
   const upcoming = appointments.filter(a => ['pending', 'confirmed'].includes(a.status));
   const past = appointments.filter(a => ['completed', 'cancelled'].includes(a.status));
 
+  const handleCancel = async (appointmentId: string | undefined) => {
+    if (!appointmentId) return;
+    if (confirm('Are you sure you want to cancel this appointment?')) {
+      try {
+        await appointmentService.updateAppointmentStatus(appointmentId, 'cancelled');
+      } catch (error) {
+        alert('Failed to cancel appointment');
+      }
+    }
+  };
+
+  const handleConfirm = async (appointmentId: string | undefined) => {
+    if (!appointmentId) return;
+    try {
+      await appointmentService.updateAppointmentStatus(appointmentId, 'confirmed');
+    } catch (error) {
+      alert('Failed to confirm appointment');
+    }
+  };
+
   return (
     <div className="space-y-12">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-8 border-b border-gray-100">
         <div className="space-y-2">
-          <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Health Dashboard</h1>
-          <p className="text-gray-500 font-medium">Welcome back, {profile?.displayName}. Here's your schedule.</p>
+          <h1 className="text-4xl font-bold text-gray-900 tracking-tight">
+            {profile?.role === 'doctor' ? 'Practice Overview' : 'Health Dashboard'}
+          </h1>
+          <div className="flex items-center gap-4">
+            <p className="text-gray-500 font-medium">Welcome back, {profile?.displayName}. Here's your schedule.</p>
+            {/* Demo Switcher */}
+            <button 
+              onClick={() => {
+                const newRole = profile?.role === 'patient' ? 'doctor' : 'patient';
+                if (user) {
+                  import('../lib/firebase').then(({ db }) => {
+                    import('firebase/firestore').then(({ doc, updateDoc }) => {
+                      updateDoc(doc(db, 'users', user.uid), { role: newRole });
+                    });
+                  });
+                }
+              }}
+              className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded inline-block hover:bg-blue-100 transition-colors"
+            >
+              Switch to {profile?.role === 'patient' ? 'Doctor' : 'Patient'} View (Demo)
+            </button>
+          </div>
         </div>
-        <button 
-          onClick={() => window.location.href = '/doctors'}
-          className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold shadow-xl shadow-blue-200 hover:bg-blue-700 transition-all flex items-center gap-2"
-        >
-          <Calendar className="w-5 h-5" />
-          Book New Visit
-        </button>
+        {profile?.role === 'patient' && (
+          <button 
+            onClick={() => window.location.href = '/doctors'}
+            className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold shadow-xl shadow-blue-200 hover:bg-blue-700 transition-all flex items-center gap-2"
+          >
+            <Calendar className="w-5 h-5" />
+            Book New Visit
+          </button>
+        )}
       </header>
 
       <div className="grid lg:grid-cols-3 gap-12">
@@ -99,7 +141,9 @@ export default function Dashboard() {
                       </div>
                       <div className="space-y-1">
                         <div className="flex items-center gap-3">
-                          <h3 className="font-bold text-gray-900 text-lg">{a.doctorName}</h3>
+                          <h3 className="font-bold text-gray-900 text-lg">
+                            {profile?.role === 'doctor' ? a.patientName : a.doctorName}
+                          </h3>
                           <StatusBadge status={a.status} />
                         </div>
                         <div className="flex flex-wrap gap-4 text-sm text-gray-500 font-medium">
@@ -109,18 +153,33 @@ export default function Dashboard() {
                           </div>
                           <div className="flex items-center gap-1.5">
                             <Video className="w-4 h-4" />
-                            Online Consultation
+                            {a.type === 'video' ? 'Video Consult' : 'In-person Visit'}
                           </div>
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 sm:pl-6 border-l border-gray-50">
+                      {profile?.role === 'doctor' && a.status === 'pending' && (
+                        <button 
+                          onClick={() => handleConfirm(a.id)}
+                          className="p-3 text-green-500 hover:bg-green-50 rounded-xl transition-all"
+                          title="Confirm"
+                        >
+                          <CheckCircle2 className="w-5 h-5" />
+                        </button>
+                      )}
                       <button className="p-3 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all">
                         <Phone className="w-5 h-5" />
                       </button>
-                      <button className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all">
-                        <XCircle className="w-5 h-5" />
-                      </button>
+                      {a.status !== 'cancelled' && (
+                        <button 
+                          onClick={() => handleCancel(a.id)}
+                          className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                          title="Cancel"
+                        >
+                          <XCircle className="w-5 h-5" />
+                        </button>
+                      )}
                     </div>
                   </motion.div>
                 ))}
@@ -131,13 +190,7 @@ export default function Dashboard() {
                   <Calendar className="w-8 h-8" />
                 </div>
                 <h3 className="text-lg font-bold text-gray-900">No upcoming appointments</h3>
-                <p className="text-gray-500 text-sm">You're all up to date with your specialists.</p>
-                <button 
-                  onClick={() => window.location.href = '/doctors'}
-                  className="text-blue-600 font-bold text-sm hover:underline"
-                >
-                  Schedule a visit
-                </button>
+                <p className="text-gray-500 text-sm">You're all up to date.</p>
               </div>
             )}
           </section>

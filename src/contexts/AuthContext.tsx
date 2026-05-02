@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
 interface UserProfile {
@@ -28,35 +28,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    let unsubscribeProfile: (() => void) | undefined;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       setUser(user);
       if (user) {
-        // Fetch or create profile
         const userDocRef = doc(db, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
+        
+        // Listen to profile changes in real-time
+        unsubscribeProfile = onSnapshot(userDocRef, (doc) => {
+          if (doc.exists()) {
+            setProfile(doc.data() as UserProfile);
+            setLoading(false);
+          } else {
+            // Create profile if missing
+            const newProfile: UserProfile = {
+              uid: user.uid,
+              email: user.email || '',
+              displayName: user.displayName || 'Guest User',
+              photoURL: user.photoURL || '',
+              role: 'patient',
+              createdAt: serverTimestamp(),
+            };
+            setDoc(userDocRef, newProfile).then(() => {
+              setProfile(newProfile);
+              setLoading(false);
+            });
+          }
+        }, (error) => {
+          console.error("Profile sync error:", error);
+          setLoading(false);
+        });
 
-        if (userDoc.exists()) {
-          setProfile(userDoc.data() as UserProfile);
-        } else {
-          // New user defaults to patient
-          const newProfile: UserProfile = {
-            uid: user.uid,
-            email: user.email || '',
-            displayName: user.displayName || 'Guest User',
-            photoURL: user.photoURL || '',
-            role: 'patient',
-            createdAt: serverTimestamp(),
-          };
-          await setDoc(userDocRef, newProfile);
-          setProfile(newProfile);
-        }
       } else {
         setProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeProfile) unsubscribeProfile();
+    };
   }, []);
 
   const signIn = async () => {
